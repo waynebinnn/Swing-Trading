@@ -91,7 +91,12 @@ if run:
                     html_path = Path(data["interactive_chart"])
                     if html_path.exists():
                         html_content = html_path.read_text(encoding="utf-8")
-                        components.html(html_content, height=760, scrolling=True)
+                        components.html(
+                            html_content,
+                            height=900,
+                            scrolling=True,
+                        )
+
                     else:
                         st.warning("交互图文件不存在，请重新运行分析。")
 
@@ -132,7 +137,6 @@ if run:
                     st.download_button(
                         "下载摘要报告(MD)",
                         data=readable_report_path.read_text(encoding="utf-8"),
-                        file_name=readable_report_path.name,
                         mime="text/markdown",
                     )
                     with st.expander("预览摘要"):

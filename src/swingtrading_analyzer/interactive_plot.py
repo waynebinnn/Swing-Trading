@@ -26,6 +26,11 @@ def build_interactive_figure(
     data["ma20"] = data["close"].rolling(20).mean()
     data["ma60"] = data["close"].rolling(60).mean()
 
+    latest = data.iloc[-1]
+
+    def _fmt_ma(v: float) -> str:
+        return f"{v:.3f}" if pd.notna(v) else "--"
+
     x_vals = pd.to_datetime(data.index)
     volume_vals = data["volume"].fillna(0.0).to_numpy()
     customdata = pd.DataFrame(
@@ -47,6 +52,7 @@ def build_interactive_figure(
             low=data["low"],
             close=data["close"],
             name="K线",
+            showlegend=True,
             increasing={"line": {"color": "red"}, "fillcolor": "red"},
             decreasing={"line": {"color": "green"}, "fillcolor": "green"},
             customdata=customdata,
@@ -56,7 +62,7 @@ def build_interactive_figure(
                 "最高: %{high:.3f}<br>"
                 "最低: %{low:.3f}<br>"
                 "收盘: %{close:.3f}<br>"
-                "成交量: %{customdata[0]:,.0f}<extra></extra>"
+                "成交量: %{customdata[0]:,.0f}<extra>%{fullData.name}</extra>"
             ),
         )
     )
@@ -67,7 +73,8 @@ def build_interactive_figure(
             y=data["ma5"],
             mode="lines",
             line={"width": 1.0, "color": "#1f77b4"},
-            name="MA5",
+            name=f"MA5 {_fmt_ma(float(latest['ma5']))}",
+            showlegend=True,
             hoverinfo="skip",
         )
     )
@@ -77,7 +84,8 @@ def build_interactive_figure(
             y=data["ma10"],
             mode="lines",
             line={"width": 1.0, "color": "#ff7f0e"},
-            name="MA10",
+            name=f"MA10 {_fmt_ma(float(latest['ma10']))}",
+            showlegend=True,
             hoverinfo="skip",
         )
     )
@@ -87,7 +95,8 @@ def build_interactive_figure(
             y=data["ma20"],
             mode="lines",
             line={"width": 1.1, "color": "#2ca02c"},
-            name="MA20",
+            name=f"MA20 {_fmt_ma(float(latest['ma20']))}",
+            showlegend=True,
             hoverinfo="skip",
         )
     )
@@ -97,17 +106,10 @@ def build_interactive_figure(
             y=data["ma60"],
             mode="lines",
             line={"width": 1.2, "color": "#9467bd"},
-            name="MA60",
+            name=f"MA60 {_fmt_ma(float(latest['ma60']))}",
+            showlegend=True,
             hoverinfo="skip",
         )
-    )
-
-    latest = data.iloc[-1]
-    ma_label = (
-        f"MA5 {latest['ma5']:.3f}  "
-        f"MA10 {latest['ma10']:.3f}  "
-        f"MA20 {latest['ma20']:.3f}  "
-        f"MA60 {latest['ma60']:.3f}"
     )
 
     if pivot_reference:
@@ -133,22 +135,24 @@ def build_interactive_figure(
             )
 
     for idx, lv in enumerate(support_levels or []):
+        y_val = float(lv)
         fig.add_hline(
-            y=float(lv),
+            y=y_val,
             line_width=1,
             line_dash="dot",
             line_color="#2E8B57",
-            annotation_text=f"支撑{idx + 1}: {float(lv):.3f}",
+            annotation_text=f"支撑{idx + 1}: {y_val:.3f}",
             annotation_position="bottom left",
         )
 
     for idx, lv in enumerate(resistance_levels or []):
+        y_val = float(lv)
         fig.add_hline(
-            y=float(lv),
+            y=y_val,
             line_width=1,
             line_dash="dot",
             line_color="#B22222",
-            annotation_text=f"压力{idx + 1}: {float(lv):.3f}",
+            annotation_text=f"压力{idx + 1}: {y_val:.3f}",
             annotation_position="top left",
         )
 
@@ -197,7 +201,7 @@ def build_interactive_figure(
         )
 
     fig.update_layout(
-        title=f"{symbol} 交互K线图（可缩放）",
+        title={"text": f"{symbol} 交互K线图（可缩放）", "x": 0.01, "xanchor": "left", "y": 0.98},
         xaxis_title="时间",
         yaxis_title="价格",
         xaxis_rangeslider_visible=True,
@@ -205,24 +209,22 @@ def build_interactive_figure(
         dragmode="zoom",
         hovermode="x unified",
         template="plotly_white",
-        legend={"orientation": "h", "y": 1.02, "x": 0},
+        legend={
+            "orientation": "h",
+            "y": 1.2,
+            "x": 0,
+            "yanchor": "bottom",
+            "xanchor": "left",
+            "bgcolor": "rgba(255,255,255,0.85)",
+            "bordercolor": "rgba(0,0,0,0.2)",
+            "borderwidth": 1,
+            "font": {"size": 12},
+            "entrywidth": 76,        # 每个图例固定宽度
+            # "entrywidthmode": "fraction",  # 自适应分行
+
+        },
         bargap=0.02,
-        margin={"l": 40, "r": 30, "t": 70, "b": 40},
-        annotations=[
-            {
-                "x": 0.01,
-                "y": 0.99,
-                "xref": "paper",
-                "yref": "paper",
-                "xanchor": "left",
-                "yanchor": "top",
-                "showarrow": False,
-                "text": ma_label,
-                "bgcolor": "rgba(255,255,255,0.75)",
-                "bordercolor": "rgba(0,0,0,0.2)",
-                "font": {"size": 11},
-            }
-        ],
+        margin={"l": 40, "r": 40, "t": 165, "b": 40},
     )
     return fig
 
@@ -289,6 +291,8 @@ if (!gd) {
 }
 
 var updatingY = false;
+var updatingX = false;
+var MIN_VISIBLE_BARS = 20;
 
 function toMillis(v) {
     if (v === undefined || v === null) {
@@ -326,18 +330,128 @@ function hasXRangeChange(evt) {
     );
 }
 
+function getCandlestickTrace() {
+    for (var i = 0; i < gd.data.length; i += 1) {
+        if (gd.data[i].type === 'candlestick') {
+            return gd.data[i];
+        }
+    }
+    return null;
+}
+
+function lowerBound(arr, target) {
+    var lo = 0;
+    var hi = arr.length;
+    while (lo < hi) {
+        var mid = (lo + hi) >> 1;
+        if (arr[mid] < target) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
+function upperBound(arr, target) {
+    var lo = 0;
+    var hi = arr.length;
+    while (lo < hi) {
+        var mid = (lo + hi) >> 1;
+        if (arr[mid] <= target) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
+function enforceMinXSpan(evt) {
+    if (updatingX) {
+        return false;
+    }
+
+    var vr = getVisibleRange(evt);
+    var left = vr[0];
+    var right = vr[1];
+    if (Number.isNaN(left) || Number.isNaN(right)) {
+        return false;
+    }
+    if (right < left) {
+        var tmp = left;
+        left = right;
+        right = tmp;
+    }
+
+    var trace = getCandlestickTrace();
+    if (!trace || !trace.x || trace.x.length === 0) {
+        return false;
+    }
+
+    var xMs = [];
+    for (var i = 0; i < trace.x.length; i += 1) {
+        var v = toMillis(trace.x[i]);
+        if (!Number.isNaN(v)) {
+            xMs.push(v);
+        }
+    }
+    if (xMs.length === 0) {
+        return false;
+    }
+    if (xMs.length <= MIN_VISIBLE_BARS) {
+        return false;
+    }
+
+    var visibleCount = upperBound(xMs, right) - lowerBound(xMs, left);
+    if (visibleCount >= MIN_VISIBLE_BARS) {
+        return false;
+    }
+
+    var center = (left + right) / 2;
+    var centerIdx = lowerBound(xMs, center);
+    if (centerIdx >= xMs.length) {
+        centerIdx = xMs.length - 1;
+    } else if (centerIdx > 0 && Math.abs(xMs[centerIdx - 1] - center) <= Math.abs(xMs[centerIdx] - center)) {
+        centerIdx = centerIdx - 1;
+    }
+
+    var half = Math.floor((MIN_VISIBLE_BARS - 1) / 2);
+    var leftIdx = centerIdx - half;
+    var rightIdx = leftIdx + MIN_VISIBLE_BARS - 1;
+
+    if (leftIdx < 0) {
+        leftIdx = 0;
+        rightIdx = MIN_VISIBLE_BARS - 1;
+    }
+    if (rightIdx >= xMs.length) {
+        rightIdx = xMs.length - 1;
+        leftIdx = rightIdx - (MIN_VISIBLE_BARS - 1);
+    }
+
+    left = xMs[leftIdx];
+    right = xMs[rightIdx];
+
+    updatingX = true;
+    var relayoutResult = Plotly.relayout(gd, {'xaxis.range': [new Date(left), new Date(right)]});
+    if (relayoutResult && typeof relayoutResult.then === 'function') {
+        relayoutResult.then(function() {
+            updatingX = false;
+        }).catch(function() {
+            updatingX = false;
+        });
+    } else {
+        updatingX = false;
+    }
+    return true;
+}
+
 function recalcY(evt) {
     if (updatingY) {
         return;
     }
 
-    var trace = null;
-    for (var i = 0; i < gd.data.length; i += 1) {
-        if (gd.data[i].type === 'candlestick') {
-            trace = gd.data[i];
-            break;
-        }
-    }
+    var trace = getCandlestickTrace();
     if (!trace || !trace.x || !trace.high || !trace.low || trace.x.length === 0) {
         return;
     }
@@ -405,12 +519,18 @@ function recalcY(evt) {
 
 gd.on('plotly_relayout', function(evt) {
     if (hasXRangeChange(evt)) {
+        if (enforceMinXSpan(evt)) {
+            return;
+        }
         recalcY(evt);
     }
 });
 
 gd.on('plotly_relayouting', function(evt) {
     if (hasXRangeChange(evt)) {
+        if (enforceMinXSpan(evt)) {
+            return;
+        }
         recalcY(evt);
     }
 });

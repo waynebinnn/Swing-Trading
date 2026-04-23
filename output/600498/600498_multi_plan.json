@@ -1,0 +1,120 @@
+{
+  "symbol": "600498",
+  "timeframes": {
+    "main": {
+      "config": {
+        "name": "main",
+        "period": "6mo",
+        "interval": "1d"
+      },
+      "bars": 641,
+      "interactive_chart": "output/600498/600498_main_interactive.html",
+      "data_csv": "output/600498/600498_main_data.csv",
+      "fallback_note": "",
+      "moving_averages": {
+        "ma5": 53.312,
+        "ma10": 51.702,
+        "ma20": 50.427,
+        "ma60": 47.491
+      },
+      "analysis": {
+        "trend": "up",
+        "fractals": 277,
+        "strokes": 223,
+        "pivots": 0,
+        "signals": [
+          {
+            "signal": "buy",
+            "type": 2,
+            "timestamp": "2026-04-20T00:00:00",
+            "price": 53.88,
+            "reason": "下跌笔后出现向上确认笔并突破前一笔起点"
+          },
+          {
+            "signal": "buy",
+            "type": 1,
+            "timestamp": "2026-04-16T00:00:00",
+            "price": 47.32,
+            "reason": "创新低但下跌力度收敛，出现背驰近似特征"
+          }
+        ]
+      },
+      "plan": {
+        "symbol": "600498",
+        "trend": "up",
+        "bias": "波段偏多",
+        "action": "优先等待回踩中枢下沿后的企稳信号，再分批介入",
+        "risk_note": "若跌破最近中枢下沿并放量，降低仓位",
+        "current_price": 55.01,
+        "pivot_reference": null,
+        "latest_signals": [
+          {
+            "signal": "buy",
+            "type": 2,
+            "timestamp": "2026-04-20T00:00:00",
+            "price": 53.88,
+            "reason": "下跌笔后出现向上确认笔并突破前一笔起点"
+          },
+          {
+            "signal": "buy",
+            "type": 1,
+            "timestamp": "2026-04-16T00:00:00",
+            "price": 47.32,
+            "reason": "创新低但下跌力度收敛，出现背驰近似特征"
+          }
+        ],
+        "key_levels": {
+          "entry_low": 53.36,
+          "entry_high": 56.66,
+          "stop_loss": 52.559,
+          "target_1": 58.36,
+          "target_2": 60.06
+        },
+        "support_levels": [
+          52.559,
+          53.36
+        ],
+        "resistance_levels": [
+          56.66,
+          58.36,
+          60.06
+        ],
+        "strategy_parameters": {
+          "entry_band_pct": 0.01,
+          "stop_loss_pct": 0.015,
+          "target_1_pct": 0.03,
+          "target_2_pct": 0.06,
+          "range_stop_loss_pct": 0.02,
+          "range_target_2_pct": 0.02
+        },
+        "operation_plan": [
+          "回踩 53.36 - 56.66 区间分批试仓。",
+          "跌破 52.559 执行止损，不做主观扛单。",
+          "上行先看 58.36，突破后看 60.06 并分批止盈。"
+        ]
+      }
+    }
+  },
+  "confluence": {
+    "trend": "up",
+    "buy_types": [
+      1,
+      2
+    ],
+    "sell_types": [],
+    "view": "偏多执行",
+    "note": "当前结构向上且出现买点信号，可分批执行。",
+    "suggested_levels": {
+      "entry_low": 53.36,
+      "entry_high": 56.66,
+      "stop_loss": 52.559,
+      "target_1": 58.36,
+      "target_2": 60.06
+    },
+    "operation_plan": [
+      "回踩 53.36 - 56.66 区间分批试仓。",
+      "跌破 52.559 执行止损，不做主观扛单。",
+      "上行先看 58.36，突破后看 60.06 并分批止盈。"
+    ]
+  }
+}
