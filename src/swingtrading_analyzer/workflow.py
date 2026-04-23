@@ -9,7 +9,7 @@ import pandas as pd
 from .analysis import ChanAnalysisResult, analyze_chan_structure
 from .data_source import FetchConfig, fetch_ohlcv
 from .interactive_plot import build_interactive_figure, save_interactive_html
-from .planner import build_trading_plan, plan_to_dict
+from .planner import StrategyParams, build_trading_plan, plan_to_dict
 
 
 @dataclass(frozen=True)
@@ -86,7 +86,74 @@ def _build_confluence(timeframe_results: dict[str, dict]) -> dict:
     }
 
 
-def run_multi_timeframe(symbol: str, outdir: str) -> dict:
+def _build_readable_report(symbol: str, report: dict) -> str:
+    confluence = report["confluence"]
+    main_plan = report["timeframes"]["main"]["plan"]
+    key_levels = main_plan.get("key_levels", {})
+    entry_low = float(key_levels.get("entry_low", 0.0))
+    entry_high = float(key_levels.get("entry_high", 0.0))
+    stop_loss = float(key_levels.get("stop_loss", 0.0))
+    target_1 = float(key_levels.get("target_1", 0.0))
+    target_2 = float(key_levels.get("target_2", 0.0))
+
+    entry_mid = (entry_low + entry_high) / 2.0 if entry_low and entry_high else 0.0
+    risk = abs(entry_mid - stop_loss) if entry_mid and stop_loss else 0.0
+    reward_1 = abs(target_1 - entry_mid) if entry_mid and target_1 else 0.0
+    reward_2 = abs(target_2 - entry_mid) if entry_mid and target_2 else 0.0
+
+    rr_1 = (reward_1 / risk) if risk > 0 else 0.0
+    rr_2 = (reward_2 / risk) if risk > 0 else 0.0
+
+    strategy_params = main_plan.get("strategy_parameters", {})
+
+    lines = [
+        f"# {symbol} 交易计划摘要",
+        "",
+        "## 综合判断",
+        f"- 观点: {confluence.get('view', '无')}",
+        f"- 说明: {confluence.get('note', '无')}",
+        f"- 买点类型: {confluence.get('buy_types', []) or '无'}",
+        f"- 卖点类型: {confluence.get('sell_types', []) or '无'}",
+        "",
+        "## 核心点位",
+        f"- 观察区间: {entry_low:.3f} - {entry_high:.3f}",
+        f"- 止损位: {stop_loss:.3f}",
+        f"- 目标位1: {target_1:.3f}",
+        f"- 目标位2: {target_2:.3f}",
+        f"- 支撑位: {main_plan.get('support_levels', [])}",
+        f"- 压力位: {main_plan.get('resistance_levels', [])}",
+        "",
+        "## 风险收益评估",
+        f"- 中位入场价: {entry_mid:.3f}",
+        f"- 风险幅度: {risk:.3f}",
+        f"- 收益幅度(目标1): {reward_1:.3f}",
+        f"- 收益幅度(目标2): {reward_2:.3f}",
+        f"- 风险收益比(目标1): {rr_1:.2f}",
+        f"- 风险收益比(目标2): {rr_2:.2f}",
+        "",
+        "## 策略参数",
+        f"- 参数: {strategy_params}",
+        "",
+        "## 操作步骤",
+    ]
+
+    for idx, step in enumerate(main_plan.get("operation_plan", []), start=1):
+        lines.append(f"{idx}. {step}")
+
+    lines.extend([
+        "",
+        "## 风险提示",
+        "- 本报告为自动化策略建议，不构成投资建议。",
+        "- 实盘前请结合流动性、事件风险和仓位管理二次确认。",
+    ])
+    return "\n".join(lines)
+
+
+def run_multi_timeframe(
+    symbol: str,
+    outdir: str,
+    strategy_params: StrategyParams | None = None,
+) -> dict:
     # Keep all artifacts grouped by symbol for cleaner project outputs.
     safe_symbol = symbol.strip().replace("/", "_").replace("\\", "_")
     output_dir = Path(outdir) / safe_symbol
@@ -102,6 +169,7 @@ def run_multi_timeframe(symbol: str, outdir: str) -> dict:
             symbol,
             analysis,
             current_price=float(df["close"].iloc[-1]),
+            strategy_params=strategy_params,
         )
 
         html_path = output_dir / f"{symbol}_{tf.name}_interactive.html"
@@ -139,5 +207,9 @@ def run_multi_timeframe(symbol: str, outdir: str) -> dict:
     report_path = output_dir / f"{symbol}_multi_plan.json"
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    readable_report_path = output_dir / f"{symbol}_plan_summary.md"
+    readable_report_path.write_text(_build_readable_report(symbol, report), encoding="utf-8")
+
     report["report_path"] = str(report_path)
+    report["readable_report_path"] = str(readable_report_path)
     return report

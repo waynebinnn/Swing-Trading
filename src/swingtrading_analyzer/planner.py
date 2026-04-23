@@ -18,14 +18,37 @@ class TradingPlan:
     key_levels: dict[str, float]
     support_levels: list[float]
     resistance_levels: list[float]
+    strategy_parameters: dict[str, float]
     operation_plan: list[str]
+
+
+@dataclass(frozen=True)
+class StrategyParams:
+    entry_band_pct: float = 0.01
+    stop_loss_pct: float = 0.015
+    target_1_pct: float = 0.03
+    target_2_pct: float = 0.06
+    range_stop_loss_pct: float = 0.02
+    range_target_2_pct: float = 0.02
+
+    def to_dict(self) -> dict[str, float]:
+        return {
+            "entry_band_pct": round(self.entry_band_pct, 4),
+            "stop_loss_pct": round(self.stop_loss_pct, 4),
+            "target_1_pct": round(self.target_1_pct, 4),
+            "target_2_pct": round(self.target_2_pct, 4),
+            "range_stop_loss_pct": round(self.range_stop_loss_pct, 4),
+            "range_target_2_pct": round(self.range_target_2_pct, 4),
+        }
 
 
 def build_trading_plan(
     symbol: str,
     analysis: ChanAnalysisResult,
     current_price: float | None = None,
+    strategy_params: StrategyParams | None = None,
 ) -> TradingPlan:
+    params = strategy_params or StrategyParams()
     latest_pivot = analysis.pivots[-1] if analysis.pivots else None
 
     if analysis.trend == "up":
@@ -45,7 +68,12 @@ def build_trading_plan(
     if latest_pivot:
         pivot_reference = {"low": latest_pivot.low, "high": latest_pivot.high}
 
-    key_levels = _build_key_levels(analysis.trend, latest_pivot, current_price)
+    key_levels = _build_key_levels(
+        analysis.trend,
+        latest_pivot,
+        current_price,
+        params,
+    )
     support_levels, resistance_levels = _build_support_resistance(
         key_levels, latest_pivot
     )
@@ -74,6 +102,7 @@ def build_trading_plan(
         key_levels=key_levels,
         support_levels=support_levels,
         resistance_levels=resistance_levels,
+        strategy_parameters=params.to_dict(),
         operation_plan=operation_plan,
     )
 
@@ -86,6 +115,7 @@ def _build_key_levels(
     trend: str,
     latest_pivot,
     current_price: float | None,
+    params: StrategyParams,
 ) -> dict[str, float]:
     cp = float(current_price) if current_price is not None else 0.0
     has_price = cp > 0
@@ -103,21 +133,33 @@ def _build_key_levels(
     if trend == "up":
         entry_low = pivot_low
         entry_high = pivot_high
-        stop_loss = pivot_low * 0.985
-        target_1 = max(pivot_high * 1.03, cp * 1.03 if has_price else 0.0)
-        target_2 = max(target_1 * 1.04, cp * 1.06 if has_price else 0.0)
+        stop_loss = pivot_low * (1.0 - params.stop_loss_pct)
+        target_1 = max(
+            pivot_high * (1.0 + params.target_1_pct),
+            cp * (1.0 + params.target_1_pct) if has_price else 0.0,
+        )
+        target_2 = max(
+            pivot_high * (1.0 + params.target_2_pct),
+            cp * (1.0 + params.target_2_pct) if has_price else 0.0,
+        )
     elif trend == "down":
-        entry_low = pivot_high * 0.99
-        entry_high = pivot_high * 1.01
-        stop_loss = pivot_high * 1.015
-        target_1 = min(pivot_low * 0.97, cp * 0.97 if has_price else pivot_low * 0.97)
-        target_2 = min(target_1 * 0.96, cp * 0.94 if has_price else target_1 * 0.96)
+        entry_low = pivot_high * (1.0 - params.entry_band_pct)
+        entry_high = pivot_high * (1.0 + params.entry_band_pct)
+        stop_loss = pivot_high * (1.0 + params.stop_loss_pct)
+        target_1 = min(
+            pivot_low * (1.0 - params.target_1_pct),
+            cp * (1.0 - params.target_1_pct) if has_price else pivot_low * (1.0 - params.target_1_pct),
+        )
+        target_2 = min(
+            pivot_low * (1.0 - params.target_2_pct),
+            cp * (1.0 - params.target_2_pct) if has_price else pivot_low * (1.0 - params.target_2_pct),
+        )
     else:
         entry_low = pivot_low
         entry_high = pivot_high
-        stop_loss = pivot_low * 0.98
+        stop_loss = pivot_low * (1.0 - params.range_stop_loss_pct)
         target_1 = pivot_high
-        target_2 = pivot_high * 1.02
+        target_2 = pivot_high * (1.0 + params.range_target_2_pct)
 
     return {
         "entry_low": round(entry_low, 3),

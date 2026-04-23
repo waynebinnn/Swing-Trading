@@ -273,4 +273,149 @@ def _build_date_rangebreaks(index: pd.DatetimeIndex) -> list[dict]:
 def save_interactive_html(fig: go.Figure, output_path: str) -> None:
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fig.write_html(str(path), include_plotlyjs="cdn")
+    fig.write_html(
+        str(path),
+        include_plotlyjs="cdn",
+        post_script=_build_dynamic_yaxis_script(),
+    )
+
+
+def _build_dynamic_yaxis_script() -> str:
+    # Auto-fit y-axis to visible candlesticks whenever the x-range changes.
+    return """
+var gd = document.getElementsByClassName('plotly-graph-div')[0];
+if (!gd) {
+    return;
+}
+
+var updatingY = false;
+
+function toMillis(v) {
+    if (v === undefined || v === null) {
+        return NaN;
+    }
+    var t = new Date(v).getTime();
+    return Number.isNaN(t) ? NaN : t;
+}
+
+function getVisibleRange(evt) {
+    if (evt && Array.isArray(evt['xaxis.range']) && evt['xaxis.range'].length === 2) {
+        return [toMillis(evt['xaxis.range'][0]), toMillis(evt['xaxis.range'][1])];
+    }
+    if (evt && evt['xaxis.range[0]'] !== undefined && evt['xaxis.range[1]'] !== undefined) {
+        return [toMillis(evt['xaxis.range[0]']), toMillis(evt['xaxis.range[1]'])];
+    }
+    if (gd._fullLayout && gd._fullLayout.xaxis && Array.isArray(gd._fullLayout.xaxis.range) && gd._fullLayout.xaxis.range.length === 2) {
+        return [toMillis(gd._fullLayout.xaxis.range[0]), toMillis(gd._fullLayout.xaxis.range[1])];
+    }
+    if (gd.layout && gd.layout.xaxis && Array.isArray(gd.layout.xaxis.range) && gd.layout.xaxis.range.length === 2) {
+        return [toMillis(gd.layout.xaxis.range[0]), toMillis(gd.layout.xaxis.range[1])];
+    }
+    return [NaN, NaN];
+}
+
+function hasXRangeChange(evt) {
+    if (!evt) {
+        return false;
+    }
+    return (
+        evt['xaxis.range[0]'] !== undefined ||
+        evt['xaxis.range[1]'] !== undefined ||
+        evt['xaxis.range'] !== undefined ||
+        evt['xaxis.autorange'] !== undefined
+    );
+}
+
+function recalcY(evt) {
+    if (updatingY) {
+        return;
+    }
+
+    var trace = null;
+    for (var i = 0; i < gd.data.length; i += 1) {
+        if (gd.data[i].type === 'candlestick') {
+            trace = gd.data[i];
+            break;
+        }
+    }
+    if (!trace || !trace.x || !trace.high || !trace.low || trace.x.length === 0) {
+        return;
+    }
+
+    var vr = getVisibleRange(evt);
+    var left = vr[0];
+    var right = vr[1];
+    var hasRange = !Number.isNaN(left) && !Number.isNaN(right);
+
+    // Do not fall back to full-history range when visible x-range is unknown.
+    // This avoids y-axis snapping back after user zoom/drag interactions.
+    if (!hasRange && !evt) {
+        return;
+    }
+
+    var minY = Infinity;
+    var maxY = -Infinity;
+    for (var j = 0; j < trace.x.length; j += 1) {
+        var xMs = toMillis(trace.x[j]);
+        if (hasRange && !Number.isNaN(xMs) && (xMs < left || xMs > right)) {
+            continue;
+        }
+        var lo = Number(trace.low[j]);
+        var hi = Number(trace.high[j]);
+        if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
+            continue;
+        }
+        if (lo < minY) {
+            minY = lo;
+        }
+        if (hi > maxY) {
+            maxY = hi;
+        }
+    }
+
+    if (!Number.isFinite(minY) || !Number.isFinite(maxY)) {
+        return;
+    }
+
+    var span = maxY - minY;
+    var pad = span > 0 ? span * 0.06 : Math.max(Math.abs(maxY) * 0.02, 0.01);
+    var nextRange = [minY - pad, maxY + pad];
+
+    var current = gd.layout && gd.layout.yaxis ? gd.layout.yaxis.range : null;
+    if (Array.isArray(current) && current.length === 2) {
+        var c0 = Number(current[0]);
+        var c1 = Number(current[1]);
+        if (Math.abs(c0 - nextRange[0]) < 1e-9 && Math.abs(c1 - nextRange[1]) < 1e-9) {
+            return;
+        }
+    }
+
+    updatingY = true;
+    var relayoutResult = Plotly.relayout(gd, {'yaxis.range': nextRange});
+    if (relayoutResult && typeof relayoutResult.then === 'function') {
+        relayoutResult.then(function() {
+            updatingY = false;
+        }).catch(function() {
+            updatingY = false;
+        });
+    } else {
+        updatingY = false;
+    }
+}
+
+gd.on('plotly_relayout', function(evt) {
+    if (hasXRangeChange(evt)) {
+        recalcY(evt);
+    }
+});
+
+gd.on('plotly_relayouting', function(evt) {
+    if (hasXRangeChange(evt)) {
+        recalcY(evt);
+    }
+});
+
+setTimeout(function() {
+    recalcY(null);
+}, 0);
+"""
