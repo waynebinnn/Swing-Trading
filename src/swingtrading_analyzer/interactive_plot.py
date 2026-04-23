@@ -32,6 +32,17 @@ def build_interactive_figure(
         return f"{v:.3f}" if pd.notna(v) else "--"
 
     x_vals = pd.to_datetime(data.index)
+    if len(x_vals) >= 2:
+        step = x_vals.to_series().diff().median()
+        if pd.isna(step) or step <= pd.Timedelta(0):
+            x_pad = pd.Timedelta(days=1)
+        else:
+            x_pad = step / 2
+    else:
+        x_pad = pd.Timedelta(days=1)
+
+    xaxis_range = [x_vals.min() - x_pad, x_vals.max() + x_pad]
+
     volume_vals = data["volume"].fillna(0.0).to_numpy()
     customdata = pd.DataFrame(
         {
@@ -205,7 +216,7 @@ def build_interactive_figure(
         xaxis_title="时间",
         yaxis_title="价格",
         xaxis_rangeslider_visible=True,
-        xaxis={"type": "date", "rangebreaks": rangebreaks},
+        xaxis={"type": "date", "rangebreaks": rangebreaks, "range": xaxis_range},
         dragmode="zoom",
         hovermode="x unified",
         template="plotly_white",
@@ -285,17 +296,14 @@ def save_interactive_html(fig: go.Figure, output_path: str) -> None:
 def _build_dynamic_yaxis_script() -> str:
     # Auto-fit y-axis to visible candlesticks whenever the x-range changes.
     return """
-console.log('=== Post-script starting ===');
 var gd = document.getElementsByClassName('plotly-graph-div')[0];
-console.log('gd element:', gd);
 if (!gd) {
-    console.log('ERROR: plotly-graph-div not found!');
     return;
 }
 
 var updatingY = false;
 var updatingX = false;
-var MIN_VISIBLE_BARS = 40;
+var MIN_VISIBLE_BARS = 60;
 var yFramePending = false;
 var latestYEvent = null;
 var lastXRange = [NaN, NaN];
@@ -329,7 +337,6 @@ function getVisibleRange(evt) {
         right = toMillis(evt['xaxis.range'][1]);
         if (!Number.isNaN(left) && !Number.isNaN(right)) {
             cacheXRange(left, right);
-            console.log('getVisibleRange: from evt[xaxis.range]', left, right);
             return [left, right];
         }
     }
@@ -338,7 +345,6 @@ function getVisibleRange(evt) {
         right = toMillis(evt['xaxis.range[1]']);
         if (!Number.isNaN(left) && !Number.isNaN(right)) {
             cacheXRange(left, right);
-            console.log('getVisibleRange: from evt[xaxis.range[0/1]]', left, right);
             return [left, right];
         }
     }
@@ -347,7 +353,6 @@ function getVisibleRange(evt) {
         right = toMillis(gd._fullLayout.xaxis.range[1]);
         if (!Number.isNaN(left) && !Number.isNaN(right)) {
             cacheXRange(left, right);
-            console.log('getVisibleRange: from fullLayout', left, right);
             return [left, right];
         }
     }
@@ -356,15 +361,12 @@ function getVisibleRange(evt) {
         right = toMillis(gd.layout.xaxis.range[1]);
         if (!Number.isNaN(left) && !Number.isNaN(right)) {
             cacheXRange(left, right);
-            console.log('getVisibleRange: from layout', left, right);
             return [left, right];
         }
     }
     if (!Number.isNaN(lastXRange[0]) && !Number.isNaN(lastXRange[1])) {
-        console.log('getVisibleRange: from cache', lastXRange[0], lastXRange[1]);
         return [lastXRange[0], lastXRange[1]];
     }
-    console.log('getVisibleRange: NaN - event keys:', evt ? Object.keys(evt) : 'no evt');
     return [NaN, NaN];
 }
 
@@ -381,19 +383,12 @@ function hasXRangeChange(evt) {
 }
 
 function getCandlestickTrace() {
-    console.log('getCandlestickTrace: searching through', gd.data.length, 'traces');
     for (var i = 0; i < gd.data.length; i += 1) {
         var trace = gd.data[i];
-        console.log('  trace', i, '- type:', trace.type);
         if (trace.type === 'candlestick') {
-            console.log('  ✓ found candlestick trace at index', i);
-            console.log('=== Full trace object:');
-            console.log(trace);
-            console.log('=== End of trace object');
             return trace;
         }
     }
-    console.log('  ✗ candlestick trace NOT found');
     return null;
 }
 
@@ -425,9 +420,30 @@ function upperBound(arr, target) {
     return lo;
 }
 
+function estimateHalfBarMs(xMs) {
+    if (!xMs || xMs.length < 2) {
+        return 12 * 60 * 60 * 1000;
+    }
+
+    var diffs = [];
+    for (var i = 1; i < xMs.length; i += 1) {
+        var d = xMs[i] - xMs[i - 1];
+        if (d > 0 && Number.isFinite(d)) {
+            diffs.push(d);
+        }
+    }
+    if (diffs.length === 0) {
+        return 12 * 60 * 60 * 1000;
+    }
+
+    diffs.sort(function(a, b) { return a - b; });
+    var mid = Math.floor(diffs.length / 2);
+    var median = diffs.length % 2 === 0 ? (diffs[mid - 1] + diffs[mid]) / 2 : diffs[mid];
+    return Math.max(1, median / 2);
+}
+
 function enforceMinXSpan(evt) {
     if (updatingX) {
-        console.log('enforceMinXSpan: updatingX=true, returning false');
         return false;
     }
 
@@ -435,7 +451,6 @@ function enforceMinXSpan(evt) {
     var left = vr[0];
     var right = vr[1];
     if (Number.isNaN(left) || Number.isNaN(right)) {
-        console.log('enforceMinXSpan: NaN range, returning false');
         return false;
     }
     if (right < left) {
@@ -446,7 +461,6 @@ function enforceMinXSpan(evt) {
 
     var trace = getCandlestickTrace();
     if (!trace || !trace.x || trace.x.length === 0) {
-        console.log('enforceMinXSpan: no trace, returning false');
         return false;
     }
 
@@ -458,22 +472,17 @@ function enforceMinXSpan(evt) {
         }
     }
     if (xMs.length === 0) {
-        console.log('enforceMinXSpan: no valid x times, returning false');
         return false;
     }
     if (xMs.length <= MIN_VISIBLE_BARS) {
-        console.log('enforceMinXSpan: total bars <= MIN_VISIBLE_BARS, returning false');
         return false;
     }
 
     var visibleCount = upperBound(xMs, right) - lowerBound(xMs, left);
-    console.log('enforceMinXSpan: visibleCount=', visibleCount, 'MIN_VISIBLE_BARS=', MIN_VISIBLE_BARS);
     if (visibleCount >= MIN_VISIBLE_BARS) {
-        console.log('enforceMinXSpan: constraint satisfied, returning false');
         return false;
     }
 
-    console.log('enforceMinXSpan: enforcing constraint');
     var center = (left + right) / 2;
     var centerIdx = lowerBound(xMs, center);
     if (centerIdx >= xMs.length) {
@@ -497,35 +506,34 @@ function enforceMinXSpan(evt) {
 
     left = xMs[leftIdx];
     right = xMs[rightIdx];
-    cacheXRange(left, right);
+    var halfBar = estimateHalfBarMs(xMs);
+    var paddedLeft = left - halfBar;
+    var paddedRight = right + halfBar;
+    cacheXRange(paddedLeft, paddedRight);
 
     updatingX = true;
-    var relayoutResult = Plotly.relayout(gd, {'xaxis.range': [new Date(left), new Date(right)]});
+    var relayoutResult = Plotly.relayout(gd, {'xaxis.range': [new Date(paddedLeft), new Date(paddedRight)]});
     if (relayoutResult && typeof relayoutResult.then === 'function') {
         relayoutResult.then(function() {
             updatingX = false;
-            console.log('enforceMinXSpan: constraint applied, calling recalcY');
             recalcY(null);
         }).catch(function() {
             updatingX = false;
         });
     } else {
         updatingX = false;
-        console.log('enforceMinXSpan: constraint applied (sync), calling recalcY');
         recalcY(null);
     }
     return true;
 }
 
 function recalcY(evt) {
-    console.log('recalcY called, updatingY=', updatingY);
     if (updatingY) {
         return;
     }
 
     var trace = getCandlestickTrace();
     if (!trace || !trace.x) {
-        console.log('recalcY: no trace or no x');
         return;
     }
 
@@ -534,27 +542,20 @@ function recalcY(evt) {
     var low = trace.low && trace.low._inputArray ? trace.low._inputArray : trace.low;
 
     if (!high || !low) {
-        console.log('recalcY: no high or low data');
         return;
     }
-
-    console.log('trace found: x.length=', trace.x.length, 'high.length=', high.length, 'low.length=', low.length);
 
     var vr = getVisibleRange(evt);
     var left = vr[0];
     var right = vr[1];
     var hasRange = !Number.isNaN(left) && !Number.isNaN(right);
 
-    console.log('recalcY: hasRange=', hasRange, 'left=', left, 'right=', right);
-
     if (!hasRange) {
-        console.log('recalcY: skipping due to no range');
         return;
     }
 
     var minY = Infinity;
     var maxY = -Infinity;
-    var foundCount = 0;
     for (var j = 0; j < trace.x.length; j += 1) {
         var xMs = toMillis(trace.x[j]);
         if (hasRange && !Number.isNaN(xMs) && (xMs < left || xMs > right)) {
@@ -565,7 +566,6 @@ function recalcY(evt) {
         if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
             continue;
         }
-        foundCount++;
         if (lo < minY) {
             minY = lo;
         }
@@ -574,10 +574,7 @@ function recalcY(evt) {
         }
     }
 
-    console.log('recalcY: found', foundCount, 'valid bars, minY=', minY, 'maxY=', maxY);
-
     if (!Number.isFinite(minY) || !Number.isFinite(maxY)) {
-        console.log('recalcY: invalid minY/maxY');
         return;
     }
 
@@ -585,28 +582,22 @@ function recalcY(evt) {
     var pad = span > 0 ? span * 0.06 : Math.max(Math.abs(maxY) * 0.02, 0.01);
     var nextRange = [minY - pad, maxY + pad];
 
-    console.log('recalcY: calculated yrange', nextRange);
-
     var current = gd.layout && gd.layout.yaxis ? gd.layout.yaxis.range : null;
     if (Array.isArray(current) && current.length === 2) {
         var c0 = Number(current[0]);
         var c1 = Number(current[1]);
         if (Math.abs(c0 - nextRange[0]) < 1e-9 && Math.abs(c1 - nextRange[1]) < 1e-9) {
-            console.log('recalcY: yrange unchanged, skipping');
             return;
         }
     }
 
-    console.log('recalcY: applying yrange update');
     updatingY = true;
     var relayoutResult = Plotly.relayout(gd, {'yaxis.range': nextRange});
     if (relayoutResult && typeof relayoutResult.then === 'function') {
         relayoutResult.then(function() {
             updatingY = false;
-            console.log('recalcY: yaxis update completed');
         }).catch(function() {
             updatingY = false;
-            console.log('recalcY: yaxis update failed');
         });
     } else {
         updatingY = false;
@@ -614,51 +605,36 @@ function recalcY(evt) {
 }
 
 function scheduleRecalcY(evt) {
-    console.log('scheduleRecalcY called');
     latestYEvent = evt || null;
     if (yFramePending) {
-        console.log('scheduleRecalcY: frame already pending, skipping');
         return;
     }
     yFramePending = true;
     requestAnimationFrame(function() {
         yFramePending = false;
-        console.log('scheduleRecalcY: executing recalcY from requestAnimationFrame');
         recalcY(latestYEvent);
     });
 }
 
 gd.on('plotly_relayout', function(evt) {
-    console.log('plotly_relayout event:', evt);
     if (hasXRangeChange(evt)) {
-        console.log('hasXRangeChange=true, checking enforceMinXSpan');
         if (enforceMinXSpan(evt)) {
-            console.log('enforceMinXSpan returned true, exiting');
             return;
         }
-        console.log('enforceMinXSpan returned false, scheduling y-axis recalc');
         scheduleRecalcY(evt);
     }
 });
 
 gd.on('plotly_relayouting', function(evt) {
-    console.log('plotly_relayouting event:', evt);
     if (hasXRangeChange(evt)) {
-        console.log('hasXRangeChange=true, checking enforceMinXSpan');
         if (enforceMinXSpan(evt)) {
-            console.log('enforceMinXSpan returned true, exiting');
             return;
         }
-        console.log('enforceMinXSpan returned false, scheduling y-axis recalc');
         scheduleRecalcY(evt);
     }
 });
 
-console.log('Event listeners registered successfully');
-
 setTimeout(function() {
-    console.log('Initial recalcY(null) after page load');
     recalcY(null);
 }, 0);
-console.log('=== Post-script initialized ===');
 """
