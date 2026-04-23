@@ -1,0 +1,79 @@
+{
+  "symbol": "002241",
+  "timeframes": {
+    "main": {
+      "config": {
+        "name": "main",
+        "period": "6mo",
+        "interval": "1d"
+      },
+      "bars": 641,
+      "interactive_chart": "output/002241/002241_main_interactive.html",
+      "data_csv": "output/002241/002241_main_data.csv",
+      "fallback_note": "",
+      "moving_averages": {
+        "ma5": 24.556,
+        "ma10": 24.43,
+        "ma20": 23.575,
+        "ma60": 25.153
+      },
+      "analysis": {
+        "trend": "up",
+        "fractals": 279,
+        "strokes": 220,
+        "pivots": 0,
+        "signals": []
+      },
+      "plan": {
+        "symbol": "002241",
+        "trend": "up",
+        "bias": "波段偏多",
+        "action": "优先等待回踩中枢下沿后的企稳信号，再分批介入",
+        "risk_note": "若跌破最近中枢下沿并放量，降低仓位",
+        "current_price": 24.31,
+        "pivot_reference": null,
+        "latest_signals": [],
+        "key_levels": {
+          "entry_low": 23.581,
+          "entry_high": 25.039,
+          "stop_loss": 23.227,
+          "target_1": 25.79,
+          "target_2": 26.822
+        },
+        "support_levels": [
+          23.227,
+          23.581
+        ],
+        "resistance_levels": [
+          25.039,
+          25.79,
+          26.822
+        ],
+        "operation_plan": [
+          "回踩 23.581 - 25.039 区间分批试仓。",
+          "跌破 23.227 执行止损，不做主观扛单。",
+          "上行先看 25.79，突破后看 26.822 并分批止盈。"
+        ]
+      }
+    }
+  },
+  "confluence": {
+    "trend": "up",
+    "buy_types": [],
+    "sell_types": [],
+    "view": "等待确认",
+    "note": "当前级别暂未形成高确定性信号，建议继续观察。",
+    "suggested_levels": {
+      "entry_low": 23.581,
+      "entry_high": 25.039,
+      "stop_loss": 23.227,
+      "target_1": 25.79,
+      "target_2": 26.822
+    },
+    "operation_plan": [
+      "回踩 23.581 - 25.039 区间分批试仓。",
+      "跌破 23.227 执行止损，不做主观扛单。",
+      "上行先看 25.79，突破后看 26.822 并分批止盈。"
+    ]
+  }
+}
